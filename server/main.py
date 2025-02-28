@@ -3,20 +3,54 @@ from dotenv import load_dotenv
 import logging
 from fastapi import FastAPI, HTTPException, Request, Query
 from fastapi.responses import JSONResponse
+from models import Message
 import json
+from typing import Dict, List
+from chat_utils import send_message, get_text_message_body
 
 #Loading the environment variables
 load_dotenv(override=True)
 
-# whatsapp_access_token: str = os.getenv("WA_ACCESS_TOKEN")
-# print(whatsapp_access_token)
-
 app = FastAPI()
-
 
 # Logger setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+messages_dict: Dict[str, List[Dict[str, str]]] = {}
+
+def update_message_log(message: str, phone_number: str, role: str) -> Dict[str, List[str]]:
+    system_message = "You are a helpful assistant that responds politely to all the user messages."
+    system_message += "If you do not know the answer to something, just say so."
+    if phone_number not in messages_dict:
+        messages_dict[phone_number] = [{"role": "system", "content": system_message}]
+    else:
+        messages_dict[phone_number].append({"role": role, "content": message})
+    return messages_dict
+
+def generate_message_response(message_log) -> str:
+    logger.info("User message logs")
+    logger.info(message_log)
+    return "Thank you for sending a message. We will get back to you shortly."
+
+def send_whatsapp_message(body, response: str):
+    value = body["entry"][0]["changes"][0]["value"]
+    from_number = value["messages"][0]["from"]
+    recipient = from_number
+    send_message(get_text_message_body(recipient, response))
+
+def handle_whatsapp_message(body):
+    message = body["entry"][0]["changes"][0]["value"]["messages"][0]
+    if message["type"] == "text":
+        message_body = message["text"]["body"]
+
+    # TODO: Implement functionality to handle other message types
+
+    message_log = update_message_log(message_body, message["from"], "user")
+    response = generate_message_response(message_log)
+    send_whatsapp_message(body, response)
+    update_message_log(response, message["from"], "assistant")
+
 
 @app.get("/")
 async def read_root():
@@ -26,9 +60,9 @@ async def read_root():
     }
 
 @app.get("/webhook")
-async def register_webhook(
+def register_webhook(
         hub_mode: str = Query(..., alias="hub.mode"), 
-        hub_challenge: str = Query(..., alias="hub.challenge"), 
+        hub_challenge: int = Query(..., alias="hub.challenge"), 
         hub_verify_token: str = Query(..., alias="hub.verify_token")
     ):
 
@@ -38,3 +72,36 @@ async def register_webhook(
         return hub_challenge
     else:
         raise HTTPException(status_code=400, detail="Authentication unsuccessful")
+
+@app.post("/webhook")
+async def process_webhook(request: Request):
+    body = await request.body()
+    body_json = json.loads(body)
+    logger.info("Webhook request Received")
+    logger.info(body_json)
+    try:
+        # info on WhatsApp text message payload:
+        # https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples#text-messages
+        if body.get("object"):
+            if (
+                body.get("entry")
+                and body["entry"][0].get("changes")
+                and body["entry"][0]["changes"][0].get("value")
+                and body["entry"][0]["changes"][0]["value"].get("messages")
+                and body["entry"][0]["changes"][0]["value"]["messages"][0]
+            ):
+                handle_whatsapp_message(body)
+        else:
+            raise HTTPException(status_code=404, detail="Not a Whatsapp API event")
+
+    except Exception as e:
+        logger.error(f"Unknown Error: {e}")
+        raise HTTPException(status_code=500, detail="An internal server error occurred")
+    
+@app.get("/send-test-message")
+async def send_test_message():
+    try:
+        await send_message(get_text_message_body("916380104477", "Heyy There!"))
+    except HTTPException:
+        raise HTTPException(status_code=500, detail="An internal server error occurred")
+    
