@@ -43,6 +43,9 @@ async def handle_whatsapp_message(body):
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
     if message["type"] == "text":
         message_body = message["text"]["body"]
+    
+    if message["type"] == "button":
+        message_body = message["button"]["text"]
 
     # TODO: Implement functionality to handle other message types
 
