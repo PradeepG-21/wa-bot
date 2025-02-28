@@ -33,13 +33,13 @@ def generate_message_response(message_log) -> str:
     logger.info(message_log)
     return "Thank you for sending a message. We will get back to you shortly."
 
-def send_whatsapp_message(body, response: str):
+async def send_whatsapp_message(body, response: str):
     value = body["entry"][0]["changes"][0]["value"]
     from_number = value["messages"][0]["from"]
     recipient = from_number
-    send_message(get_text_message_body(recipient, response))
+    await send_message(get_text_message_body(recipient, response))
 
-def handle_whatsapp_message(body):
+async def handle_whatsapp_message(body):
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]
     if message["type"] == "text":
         message_body = message["text"]["body"]
@@ -47,8 +47,8 @@ def handle_whatsapp_message(body):
     # TODO: Implement functionality to handle other message types
 
     message_log = update_message_log(message_body, message["from"], "user")
-    response = generate_message_response(message_log)
-    send_whatsapp_message(body, response)
+    response = generate_message_response(message_log[message["from"]])
+    await send_whatsapp_message(body, response)
     update_message_log(response, message["from"], "assistant")
 
 
@@ -76,21 +76,22 @@ def register_webhook(
 @app.post("/webhook")
 async def process_webhook(request: Request):
     body = await request.body()
-    body_json = json.loads(body)
+    body_obj = json.loads(body.decode('utf-8'))
     logger.info("Webhook request Received")
-    logger.info(body_json)
+    logger.info(json.dumps(body_obj))
     try:
         # info on WhatsApp text message payload:
         # https://developers.facebook.com/docs/whatsapp/cloud-api/webhooks/payload-examples#text-messages
-        if body.get("object"):
+        if body_obj.get("object"):
             if (
-                body.get("entry")
-                and body["entry"][0].get("changes")
-                and body["entry"][0]["changes"][0].get("value")
-                and body["entry"][0]["changes"][0]["value"].get("messages")
-                and body["entry"][0]["changes"][0]["value"]["messages"][0]
+                body_obj.get("entry")
+                and body_obj["entry"][0].get("changes")
+                and body_obj["entry"][0]["changes"][0].get("value")
+                and body_obj["entry"][0]["changes"][0]["value"].get("messages")
+                and body_obj["entry"][0]["changes"][0]["value"]["messages"][0]
             ):
-                handle_whatsapp_message(body)
+                logger.info("handling message")
+                await handle_whatsapp_message(body_obj)
         else:
             raise HTTPException(status_code=404, detail="Not a Whatsapp API event")
 
@@ -104,4 +105,3 @@ async def send_test_message():
         await send_message(get_text_message_body("916380104477", "Heyy There!"))
     except HTTPException:
         raise HTTPException(status_code=500, detail="An internal server error occurred")
-    
