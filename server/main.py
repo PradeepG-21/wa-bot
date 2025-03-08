@@ -6,7 +6,7 @@ from fastapi.responses import JSONResponse
 from models import Message
 import json
 from typing import Dict, List
-from chat_utils import send_message, get_text_message_body
+from chat_utils import send_message, get_text_message_body, get_text_message_body_template
 
 #Loading the environment variables
 load_dotenv(override=True)
@@ -24,20 +24,47 @@ def update_message_log(message: str, phone_number: str, role: str) -> Dict[str, 
     system_message += "If you do not know the answer to something, just say so."
     if phone_number not in messages_dict:
         messages_dict[phone_number] = [{"role": "system", "content": system_message}]
-    else:
-        messages_dict[phone_number].append({"role": role, "content": message})
+    messages_dict[phone_number].append({"role": role, "content": message})
     return messages_dict
 
-def generate_message_response(message_log) -> str:
+def check_vacancies(location: str) -> str:
+    vacancies: int = 0
+    if(location == "karapakkam"):
+        vacancies = 2
+    elif location == "thuraipakkam":
+        vacancies = 0
+    if vacancies != 0:
+        return f"We currently have {vacancies} vacancies at {location} location"
+    else:
+        return f"We currently have no available rooms at {location} location"
+    
+
+# TODO - Make code such that the response is generated based on the message recipient number. IE: Response template and generic message should be specific to each business owner
+# TODO - Create map for the templates owned by each business owner. Template name should be sent as a parameter for body to be generated.
+
+def generate_message_response(message_log: List[str]) -> str:
+    if(len(message_log) > 2):
+        print(message_log[-3])
     logger.info("User message logs")
     logger.info(message_log)
-    return "Thank you for sending a message. We will get back to you shortly."
+    if(message_log[-1]["content"].lower() == "Hi".lower()):
+        return "TEMPLATE"
+    elif(message_log[-1]["content"].lower() == "Check Vacancies".lower()):
+        return "Please enter the location name: Karapakkam, Sholinganallur_1, Sholinganallur_1, Thuraipakkam, Tharamani"
+    elif(message_log[-3]["content"].lower() == "Check Vacancies".lower()):
+        logger.info("Checking Vacancies")
+        return check_vacancies(message_log[-1]["content"].lower())
+    else:
+        return "Thank you for sending a message. We will get back to you shortly."
 
 async def send_whatsapp_message(body, response: str):
     value = body["entry"][0]["changes"][0]["value"]
     from_number = value["messages"][0]["from"]
     recipient = from_number
-    await send_message(get_text_message_body(recipient, response))
+    if(response == "TEMPLATE"):
+        await send_message(get_text_message_body_template(recipient))
+    else:
+        await send_message(get_text_message_body(recipient, response))
 
 async def handle_whatsapp_message(body):
     message = body["entry"][0]["changes"][0]["value"]["messages"][0]

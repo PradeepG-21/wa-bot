@@ -17,6 +17,46 @@ def get_text_message_body(recipient: str, text: str):
         }
     })
 
+# TODO - Message body should be dynamically generated based on template name selected.
+
+def get_text_message_body_template(recipient: str):
+    return json.dumps({
+        "messaging_product": "whatsapp",
+        "to": recipient,
+        "recipient_type": "individual",
+        "type": "template",
+        "template": {
+            "name": "demo_flow",
+            "language": {
+                "code": "en"
+            },
+            "components": [
+                {
+                    "type": "header",
+                    "parameters": [
+                        {
+                            "type": "image",
+                            "image": {
+                                "link": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRPVf8HVoBFpE0nFACC7y5IQqY_RVJq7K8t_w&s"
+                            }
+                        }
+
+                    ]
+                },
+                {
+                    "type": "body",
+                    "parameters": [
+                        {
+                            "type": "text",
+                            "parameter_name": "service_name",
+                            "text": "Engineer's PG"
+                        }
+                    ]
+                }
+            ]
+        }
+    })
+
 async def send_message(message_body):
     headers = {
         "Content-type": "application/json",
